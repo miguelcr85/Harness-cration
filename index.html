@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harness Studio · Diseño de arneses automotrices</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+
+    <!-- ============ BARRA SUPERIOR ============ -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h6a4 4 0 0 1 4 4v4a4 4 0 0 0 4 4h2" />
+            <circle cx="4" cy="6" r="2" /><circle cx="20" cy="18" r="2" />
+            <path d="M14 14l4-4" /><circle cx="19" cy="9" r="2" />
+          </svg>
+        </div>
+        <div class="brand__text">
+          <strong>Harness Studio</strong>
+          <span>Diseño de arneses eléctricos</span>
+        </div>
+      </div>
+
+      <div class="topbar__group">
+        <button class="btn btn--primary" id="btnAddComponent" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Agregar Componente
+        </button>
+
+        <div class="segmented" role="group" aria-label="Vista del lienzo">
+          <button class="segmented__btn is-active" id="btnViewSchema" type="button" data-mode="schema">Vista Esquema</button>
+          <button class="segmented__btn" id="btnViewLayout" type="button" data-mode="layout">Vista Layout</button>
+        </div>
+
+        <button class="btn" id="btnAutoArrange" type="button" title="Reorganiza los componentes en la vista layout">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h6v12H4zM14 4h6v6h-6zM14 14h6v6h-6z"/></svg>
+          Auto-organizar
+        </button>
+      </div>
+
+      <div class="topbar__group topbar__group--right">
+        <div class="zoom">
+          <button class="icon-btn" id="btnZoomOut" type="button" title="Alejar">−</button>
+          <button class="zoom__value" id="zoomLabel" type="button" title="Restablecer zoom">100%</button>
+          <button class="icon-btn" id="btnZoomIn" type="button" title="Acercar">+</button>
+          <button class="icon-btn" id="btnCenter" type="button" title="Centrar vista">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+          </button>
+        </div>
+
+        <button class="btn" id="btnSave" type="button">Guardar</button>
+        <button class="btn" id="btnExport" type="button">Exportar JSON</button>
+        <button class="btn" id="btnImport" type="button">Importar</button>
+        <button class="btn" id="btnExportPng" type="button">PNG</button>
+        <button class="btn btn--danger-ghost" id="btnNew" type="button">Nuevo</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden />
+      </div>
+    </header>
+
+    <!-- ============ PANEL IZQUIERDO ============ -->
+    <aside class="sidebar">
+      <div class="sidebar__head">
+        <div>
+          <h2>Biblioteca</h2>
+          <p id="libraryCount">0 componentes definidos</p>
+        </div>
+        <button class="icon-btn icon-btn--solid" id="btnAddComponentSidebar" type="button" title="Agregar componente">+</button>
+      </div>
+
+      <div class="sidebar__search">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="librarySearch" placeholder="Buscar por nombre o compañía…" />
+      </div>
+
+      <div class="library" id="libraryList"></div>
+
+      <div class="sidebar__foot">
+        <p><strong>Tip:</strong> arrastra un componente al lienzo para colocarlo.</p>
+        <p>Doble clic en una tarjeta para insertarlo al centro.</p>
+      </div>
+    </aside>
+
+    <!-- ============ ÁREA DE TRABAJO ============ -->
+    <main class="workspace" id="workspace">
+      <div class="stage-host" id="stageHost"></div>
+
+      <div class="canvas-hint" id="canvasHint">
+        <span class="dot"></span>
+        <span id="canvasHintText">Vista esquema · arrastra un componente desde la biblioteca</span>
+      </div>
+
+      <div class="measure-badge" id="measureBadge" hidden>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 17 17 3l4 4L7 21z"/><path d="M8 16l1.5 1.5M11 13l1.5 1.5M14 10l1.5 1.5M17 7l1.5 1.5"/></svg>
+        Modo medición: haz clic en 2 elementos
+        <button type="button" id="btnMeasureStop">Salir</button>
+      </div>
+
+      <div class="pin-tooltip" id="pinTooltip" hidden></div>
+
+      <div class="empty-state" id="emptyState">
+        <div class="empty-state__icon">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h5a5 5 0 0 1 5 5v2a5 5 0 0 0 5 5h1"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="18" r="2"/><path d="M14 13l5-5"/><circle cx="20.5" cy="7" r="2"/></svg>
+        </div>
+        <h3>Tu lienzo está vacío</h3>
+        <p>Crea un conector con su matriz de pines y arrástralo aquí para empezar a rutear los chicotes.</p>
+        <div class="empty-state__actions">
+          <button class="btn btn--primary" id="btnAddComponentEmpty" type="button">Agregar componente</button>
+          <button class="btn" id="btnLoadDemo" type="button">Cargar ejemplo</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============ PANEL DERECHO ============ -->
+    <aside class="inspector">
+      <div class="inspector__block" id="selectionBlock">
+        <h2 class="panel-title">Propiedades</h2>
+        <div id="selectionBody" class="panel-body">
+          <p class="muted">Selecciona un componente, un chicote o un haz para ver sus propiedades.</p>
+        </div>
+      </div>
+
+      <div class="inspector__block">
+        <h2 class="panel-title">Medición de distancia (opcional)</h2>
+        <div class="panel-body">
+          <label class="field field--stack">
+            <span>Distancia entre elementos</span>
+            <input type="text" id="distanceValue" class="input input--readonly" readonly value="—" placeholder="Sin medición" />
+          </label>
+          <div class="measure-row">
+            <button class="btn btn--block" id="btnMeasure" type="button">Medir (2 clics)</button>
+            <button class="btn btn--ghost" id="btnMeasureClear" type="button" title="Limpiar medición">Limpiar</button>
+          </div>
+          <label class="field field--inline">
+            <span>Escala</span>
+            <span class="field__affix">1 px =</span>
+            <input type="number" id="scaleInput" min="0.01" step="0.01" value="1" />
+            <span class="field__affix">mm</span>
+          </label>
+          <p class="hint" id="measureHint">Haz clic en dos pines o en dos tarjetas para medir.</p>
+          <p class="hint" style="margin-top:6px">Herramienta opcional: no modifica las longitudes manuales del arnés.</p>
+        </div>
+      </div>
+
+      <div class="inspector__block">
+        <h2 class="panel-title">Resumen del arnés</h2>
+        <div class="panel-body">
+          <dl class="summary" id="summaryList">
+            <div><dt>Componentes</dt><dd data-summary="components">0</dd></div>
+            <div><dt>Chicotes</dt><dd data-summary="wires">0</dd></div>
+            <div><dt>Ramificaciones</dt><dd data-summary="branches">0</dd></div>
+            <div><dt>Longitud manual total</dt><dd data-summary="length">0 mm</dd></div>
+            <div><dt>Costo conectores</dt><dd data-summary="cost">$0.00</dd></div>
+          </dl>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ BARRA DE ESTADO ============ -->
+    <footer class="statusbar">
+      <span id="statusMode">Vista esquema</span>
+      <span class="statusbar__sep">•</span>
+      <span id="statusSelection" class="statusbar__selection is-empty">Sin selección</span>
+      <span class="statusbar__sep">•</span>
+      <span id="statusHint">Arrastra el fondo para moverte · rueda del ratón para zoom · Supr elimina la selección</span>
+      <span class="statusbar__spacer"></span>
+      <span id="statusSave" class="statusbar__save">Guardado automático activo</span>
+    </footer>
+  </div>
+
+  <!-- ============ MODAL COMPONENTE ============ -->
+  <div class="modal-backdrop" id="componentModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="componentModalTitle">
+      <header class="modal__head">
+        <div>
+          <h2 id="componentModalTitle">Agregar componente</h2>
+          <p>Define la información del conector y su matriz de pines.</p>
+        </div>
+        <button class="icon-btn" type="button" data-close-modal aria-label="Cerrar">✕</button>
+      </header>
+
+      <div class="modal__body">
+        <section class="form-section">
+          <h3>Información básica</h3>
+          <div class="form-grid">
+            <label class="field">
+              <span>Nombre del conector *</span>
+              <input type="text" id="compName" maxlength="60" placeholder="Ej: ECU Motor" />
+            </label>
+            <label class="field">
+              <span>Compañía / Fabricante</span>
+              <input type="text" id="compCompany" maxlength="60" placeholder="Ej: Bosch" />
+            </label>
+            <label class="field">
+              <span>Costo (USD)</span>
+              <input type="number" id="compCost" min="0" step="0.01" placeholder="0.00" />
+            </label>
+            <div class="field">
+              <span>Foto del conector</span>
+              <div class="photo-field">
+                <div class="photo-preview" id="photoPreview">
+                  <span id="photoPlaceholder">Sin foto</span>
+                  <img id="photoImage" alt="Vista previa del conector" hidden />
+                </div>
+                <div class="photo-actions">
+                  <label class="btn btn--sm" for="compPhoto">Subir imagen</label>
+                  <input type="file" id="compPhoto" accept="image/*" hidden />
+                  <button type="button" class="btn btn--sm btn--ghost" id="btnRemovePhoto">Quitar</button>
+                  <p class="hint">Se guarda como DataURL y se redimensiona para ahorrar espacio.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-head">
+            <div>
+              <h3>Definición de pines</h3>
+              <p class="hint">Cada subgrupo genera una matriz de pines (filas × columnas). Cada pin será un punto de anclaje en el lienzo.</p>
+            </div>
+            <button class="btn btn--ghost btn--sm" type="button" id="btnAddSubgroup">+ Subgrupo</button>
+          </div>
+          <div id="subgroupList" class="subgroup-list"></div>
+        </section>
+      </div>
+
+      <footer class="modal__foot">
+        <span class="modal__error" id="modalError" role="alert"></span>
+        <button class="btn" type="button" data-close-modal>Cancelar</button>
+        <button class="btn btn--primary" type="button" id="btnSaveComponent">Guardar componente</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="js/vendor/konva.min.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/hit-test.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/component-modal.js"></script>
+  <script src="js/library.js"></script>
+  <script src="js/measure.js"></script>
+  <script src="js/schema-view.js"></script>
+  <script src="js/layout-view.js"></script>
+  <script src="js/inspector.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
+
