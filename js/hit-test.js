@@ -107,18 +107,30 @@
 
   function nearestPointOnPolyline(point, points) {
     if (!points || points.length === 0) return null;
-    let best = { x: points[0].x, y: points[0].y, distance: Infinity };
+    let total = 0;
+    for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    let best = { x: points[0].x, y: points[0].y, distance: Infinity, t: 0 };
+    let acc = 0;
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1];
       const b = points[i];
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const lenSq = dx * dx + dy * dy;
-      let t = lenSq === 0 ? 0 : ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq;
-      t = Math.max(0, Math.min(1, t));
-      const candidate = { x: a.x + t * dx, y: a.y + t * dy };
+      let local = lenSq === 0 ? 0 : ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq;
+      local = Math.max(0, Math.min(1, local));
+      const candidate = { x: a.x + local * dx, y: a.y + local * dy };
       const distance = Math.hypot(point.x - candidate.x, point.y - candidate.y);
-      if (distance < best.distance) best = { x: candidate.x, y: candidate.y, distance: distance };
+      if (distance < best.distance) {
+        const seg = Math.sqrt(lenSq);
+        best = {
+          x: candidate.x,
+          y: candidate.y,
+          distance: distance,
+          t: total > 0 ? (acc + local * seg) / total : 0
+        };
+      }
+      acc += Math.sqrt(lenSq);
     }
     return best;
   }

@@ -91,7 +91,7 @@
 
       <div class="canvas-hint" id="canvasHint">
         <span class="dot"></span>
-        <span id="canvasHintText">Vista esquema · arrastra un componente desde la biblioteca</span>
+        <span id="canvasHintText">Vista esquema · arrastra pin→pin para un chicote o pin→cable para un empalme</span>
       </div>
 
       <div class="pin-tooltip" id="pinTooltip" hidden></div>
@@ -116,7 +116,7 @@
       <div class="inspector__block" id="selectionBlock">
         <h2 class="panel-title">Propiedades</h2>
         <div id="selectionBody" class="panel-body">
-          <p class="muted">Selecciona un componente, un chicote o un haz para ver sus propiedades.</p>
+          <p class="muted">Selecciona un componente, un chicote, un empalme o un haz para ver sus propiedades.</p>
         </div>
       </div>
 
@@ -127,6 +127,7 @@
             <div><dt>Componentes</dt><dd data-summary="components">0</dd></div>
             <div><dt>Chicotes</dt><dd data-summary="wires">0</dd></div>
             <div><dt>Ramificaciones</dt><dd data-summary="branches">0</dd></div>
+            <div><dt>Empalmes</dt><dd data-summary="taps">0</dd></div>
             <div><dt>Longitud manual total</dt><dd data-summary="length">0 mm</dd></div>
             <div><dt>Costo conectores</dt><dd data-summary="cost">$0.00</dd></div>
           </dl>
@@ -140,7 +141,7 @@
       <span class="statusbar__sep">•</span>
       <span id="statusSelection" class="statusbar__selection is-empty">Sin selección</span>
       <span class="statusbar__sep">•</span>
-      <span id="statusHint">Arrastra el fondo para moverte · rueda del ratón para zoom · Supr elimina la selección</span>
+      <span id="statusHint">Arrastra el fondo para moverte · rueda del ratón para zoom · arrastra pin→cable para empalmar · Supr elimina la selección</span>
       <span class="statusbar__spacer"></span>
       <span id="statusSave" class="statusbar__save">Guardado automático activo</span>
     </footer>

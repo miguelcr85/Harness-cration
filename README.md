@@ -1,6 +1,6 @@
 # Harness Studio
 
-Aplicación web frontend para el diseño visual de arneses eléctricos automotrices. Permite crear conectores con su matriz de pines, colocarlos en un lienzo, unir sus pines con chicotes y visualizar el arnés en una vista de layout con haces y ramificaciones.
+Aplicación web frontend para el diseño visual de arneses eléctricos automotrices. Permite crear conectores con su matriz de pines, colocarlos en un lienzo, unir sus pines con chicotes o empalmes sobre un cable y visualizar el arnés en una vista de layout con haces y ramificaciones.
 
 Stack: **HTML5 + CSS3 + JavaScript (ES6+) + Konva.js (Canvas 2D)**. No requiere build, servidor ni instalación de dependencias: Konva está incluido localmente en `js/vendor/`.
 
@@ -22,7 +22,7 @@ python -m http.server 8080
 - Barra superior con **Agregar Componente**, cambio de vista **Esquema / Layout / BOM**, **Auto-organizar**, zoom, guardar, importar/exportar JSON, exportar PNG y proyecto nuevo.
 - Panel izquierdo con la **biblioteca** de conectores (miniatura de la foto, nombre, compañía, pines y costo). Se puede buscar, arrastrar al lienzo o insertar con doble clic. Cada tarjeta permite editar o eliminar la definición.
 - Lienzo con **zoom** (rueda del ratón), **paneo** (arrastrar el fondo) y **cuadrícula adaptativa**.
-- Panel derecho con **propiedades** y **resumen del arnés** (componentes, chicotes, ramificaciones, longitud manual total y costo de conectores).
+- Panel derecho con **propiedades** y **resumen del arnés** (componentes, chicotes, ramificaciones, empalmes, longitud manual total y costo de conectores).
 
 ### 2. Creación de componentes (modal)
 - Nombre, compañía, costo y **foto** (FileReader → DataURL, redimensionada a 560 px para ahorrar espacio).
@@ -37,12 +37,14 @@ python -m http.server 8080
 - Al editar una definición se actualizan todas sus instancias; las conexiones cuyos pines dejaron de existir se eliminan avisando al usuario.
 
 ### 3. Vista Esquema
-- Arrastrar componentes por el lienzo con actualización en tiempo real de los chicotes.
+- Arrastrar componentes por el lienzo con actualización en tiempo real de los chicotes y empalmes.
 - Cada componente muestra foto, nombre, compañía, costo y la matriz de pines por subgrupo. Los pines conectados se resaltan en verde y muestran su **texto descriptivo** debajo del número; al pasar el cursor aparece un tooltip con la descripción completa.
-- **Selección**: cada componente, pin, chicote y haz/ramificación seleccionado se resalta con un contorno azul; la barra de estado indica qué elemento está seleccionado. Un clic sobre el fondo o `Esc` limpia la selección.
+- **Selección**: cada componente, pin, chicote, empalme y haz/ramificación seleccionado se resalta con un contorno azul; la barra de estado indica qué elemento está seleccionado. Un clic sobre el fondo o `Esc` limpia la selección.
 - **Crear chicote**: hacer clic sobre un pin y arrastrar hasta otro pin. Cada pin posee un área de impacto amplia (incluye su número y su texto) para que no se mueva el componente al pulsarlo. Se muestra una línea temporal y un resaltado del pin destino. Validación estricta **1 a 1** (un pin no acepta más de un chicote).
+- **Crear empalme (unión pin → cable)**: arrastra un pin **libre** y suéltalo sobre cualquier cable ya creado. Se dibuja una derivación desde el borde de la tarjeta hasta el punto exacto del cable, con un punto de unión; el empalme se puede seleccionar, colorear, asignar longitud manual y eliminar. Permite topologías de bus o multi-derivación, como varios conectores colgando de un mismo cable principal.
 - **Ruteo editable**: doble clic sobre un cable agrega un punto de control; al seleccionar un cable aparecen manejadores arrastrables para crear curvas y dobleces. El botón *Restablecer ruteo* vuelve al ruteo automático ortogonal.
-- Propiedades del chicote: **componente origen, pin origen y su valor asignado** por separado, **componente destino, pin destino y su valor**, puntos de ruteo, color, **longitud manual en mm** y eliminación.
+- Propiedades del chicote: **componente origen, pin origen y su valor asignado** por separado, **componente destino, pin destino y su valor**, puntos de ruteo, cantidad de empalmes, color, **longitud manual en mm** y eliminación.
+- Propiedades del **empalme**: componente y pin de origen, valor del pin, cable destino, posición sobre el cable, color, longitud manual y eliminación. Doble clic sobre el empalme permite editar su longitud.
 
 ### 4. Vista Layout
 - Los mismos componentes se muestran como tarjetas simplificadas (foto, nombre, compañía y nº de pines) en posiciones de layout independientes de la vista esquema.
@@ -51,14 +53,15 @@ python -m http.server 8080
 - **Punto medio móvil**: arrastra el círculo del punto medio de un haz para cambiar su recorrido (el haz se convierte en una línea con doblez). La posición se guarda en el proyecto.
 - **Unir haces**: arrastra el punto medio de un haz y suéltalo sobre otro haz o sobre su punto medio; ambos pasan a compartir un **punto de unión** (se muestra un anillo azul) sin perder la conexión con sus componentes. Puedes unir más de dos haces repitiendo la operación. El botón *Quitar unión* del panel Propiedades devuelve un haz a su punto medio recto.
 - **Ramificaciones**: arrastra el punto medio de un haz (o de una unión) y suéltalo sobre un componente para crear una derivación anclada a ese punto; se dibuja hasta el componente destino y muestra su longitud manual. Si mueves el punto de unión, las ramificaciones ancladas lo siguen.
+- **Empalmes**: las uniones pin → cable creadas en la vista Esquema se dibujan también en layout desde el punto correspondiente del haz hasta el componente del pin, con su color y longitud manual.
 - *Auto-organizar* distribuye los componentes en columnas según la conectividad (BFS).
 - Al seleccionar un haz se listan todos sus cables con colores y longitudes manuales, el punto de unión y cuántos haces están unidos.
 
 ### 5. Vista BOM
 - Pestaña **Vista BOM** con la **lista de materiales** del arnés, sin perder el proyecto ni las vistas de dibujo.
 - **Conectores**: agrupa las instancias por referencia e indica compañía, pines por conector, cantidad, pines totales, costo unitario y subtotal.
-- **Cable por color**: agrupa chicotes y ramificaciones por color, con cantidad de circuitos y la **longitud total en metros** a partir de las longitudes manuales.
-- Indicadores generales: conectores distintos, instancias, pines totales, chicotes, ramificaciones, cable total y costo de conectores.
+- **Cable por color**: agrupa chicotes, ramificaciones y empalmes por color, con cantidad de circuitos y la **longitud total en metros** a partir de las longitudes manuales.
+- Indicadores generales: conectores distintos, instancias, pines totales, chicotes, ramificaciones, empalmes, cable total y costo de conectores.
 - Botón **Exportar CSV** con las tablas y el resumen para llevar el BOM a una hoja de cálculo.
 - El BOM se actualiza automáticamente al agregar, quitar o editar componentes, cables y longitudes.
 
@@ -66,14 +69,16 @@ python -m http.server 8080
 - Guardado automático (debounce) en `localStorage`.
 - Exportar/Importar JSON completo del proyecto.
 - Exportar PNG del lienzo de la vista activa.
-- Proyecto de ejemplo disponible desde el estado vacío para ver todas las funciones.
+- Proyecto de ejemplo disponible desde el estado vacío para ver todas las funciones; incluye un empalme de muestra de un pin a un cable.
 
 ## Atajos de teclado
 | Tecla | Acción |
 | --- | --- |
-| `Supr` / `Backspace` | Elimina la selección (componente, chicote, haz o ramificación) |
+| `Supr` / `Backspace` | Elimina la selección (componente, chicote, empalme, haz o ramificación) |
 | `Ctrl/Cmd + S` | Guarda inmediatamente |
 | `Esc` | Cancela la creación de un chicote o una ramificación; si no hay acción en curso, limpia la selección |
+| Arrastrar pin → cable | Crea un empalme en el punto del cable donde se suelta |
+| Doble clic en empalme | Edita su longitud manual en mm (esquema o layout) |
 | Doble clic en haz/ramificación | Edita su longitud manual en mm (vista layout) |
 | Arrastrar punto medio (layout) | Mueve el punto del haz; suéltalo sobre otro haz para unirlos o sobre un componente para ramificar |
 | Rueda del ratón | Zoom sobre el cursor |

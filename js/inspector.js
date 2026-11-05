@@ -33,8 +33,8 @@
   }
 
   function emptyMessage() {
-    return '<p class="muted">Selecciona un componente, un pin, un chicote, un haz o una ramificación para ver sus propiedades.</p>' +
-      '<p class="hint" style="margin-top:8px">Los elementos seleccionados se resaltan en el lienzo. Doble clic en un chicote agrega un punto de ruteo; en layout, doble clic sobre un haz o ramificación permite escribir su longitud manual.</p>';
+    return '<p class="muted">Selecciona un componente, un pin, un chicote, un empalme, un haz o una ramificación para ver sus propiedades.</p>' +
+      '<p class="hint" style="margin-top:8px">Los elementos seleccionados se resaltan en el lienzo. Doble clic en un chicote agrega un punto de ruteo; en layout, doble clic sobre un haz, ramificación o empalme permite escribir su longitud manual.</p>';
   }
 
   function bundleComps(key) {
@@ -51,12 +51,14 @@
     if (!data) return emptyMessage();
     const def = data.def;
     const pinCount = (def.pins || []).length;
-    const connected = H.store.wiresOfComponent(comp.id).length;
-    const totalLength = totalWiresLength(H.store.wiresOfComponent(comp.id));
+    const wires = H.store.wiresOfComponent(comp.id);
+    const taps = H.store.tapsOfComponent(comp.id);
+    const totalLength = totalWiresLength(wires.concat(taps));
     return selectionHead('▣', def.name, (def.company || 'Sin fabricante') + ' · ' + pinCount + ' pines') +
       '<dl class="prop-list">' +
         row('Costo unitario', U.formatMoney(def.cost)) +
-        row('Chicotes conectados', String(connected)) +
+        row('Chicotes conectados', String(wires.length)) +
+        row('Empalmes', String(taps.length)) +
         row('Longitud manual de sus cables', manualLength(totalLength)) +
         row('Subgrupos', (def.subgroups || []).length + '') +
       '</dl>' +
@@ -94,6 +96,7 @@
         row('Componente destino', to.comp) +
         row('Pin destino', to.pin) +
         (to.value ? row('Valor pin destino', to.value) : '') +
+        row('Empalmes', String(H.store.tapsOfWire(wire.id).length)) +
         row('Puntos de ruteo', String((wire.points || []).length)) +
       '</dl>' +
       '<div class="color-row">' +
@@ -108,7 +111,7 @@
         '<button class="btn btn--sm" type="button" data-action="reset-wire">Restablecer ruteo</button>' +
         '<button class="btn btn--sm btn--danger-ghost" type="button" data-action="delete-wire">Eliminar</button>' +
       '</div>' +
-      '<p class="hint" style="margin-top:8px">Doble clic sobre el cable agrega un punto de control.</p>';
+      '<p class="hint" style="margin-top:8px">Doble clic sobre el cable agrega un punto de control. Un pin libre puede soltarse sobre este cable para crear un empalme.</p>';
   }
 
   function renderBundle(key) {
@@ -120,6 +123,8 @@
       return a && b && H.store.bundleKey(a.compId, b.compId) === key;
     });
     const branches = H.store.branchesForBundle(comps.a.id, comps.b.id);
+    const wireIds = wires.map(function (wire) { return wire.id; });
+    const taps = H.store.state.taps.filter(function (tap) { return wireIds.indexOf(tap.wireId) !== -1; });
     const total = totalWiresLength(wires);
     const route = H.store.getRoute(key);
     const joined = H.store.joinedRouteKeys(key);
@@ -135,6 +140,7 @@
       '<dl class="prop-list">' +
         row('Cables en el haz', String(wires.length)) +
         row('Ramificaciones', String(branches.length)) +
+        row('Empalmes', String(taps.length)) +
         row('Longitud manual total', manualLength(total)) +
         row('Punto de unión', route ? Math.round(route.x) + ', ' + Math.round(route.y) : 'Automático (punto medio)') +
         (joined.length > 1 ? row('Haces unidos', String(joined.length)) : '') +
@@ -179,29 +185,73 @@
       '</div>';
   }
 
+  function renderTap(tap) {
+    const found = H.store.findPin(tap.pinId);
+    const wire = H.store.state.wires.find(function (w) { return w.id === tap.wireId; });
+    const trunk = wire
+      ? H.store.pinLabel(wire.fromPinId) + ' → ' + H.store.pinLabel(wire.toPinId)
+      : 'Cable no disponible';
+    const length = Math.max(0, Number(tap.length) || 0);
+    const color = tap.color || (wire ? wire.color : '#475569') || '#475569';
+
+    return selectionHead('⊤', (found ? found.compName + ' · pin ' + found.pin.label : 'Pin') + ' · empalme', 'Unión de un pin a un cable') +
+      '<dl class="prop-list">' +
+        row('Componente', found ? found.compName : '—') +
+        row('Pin', found ? found.pin.label : '—') +
+        (found && found.pin.description ? row('Valor del pin', found.pin.description) : '') +
+        row('Cable destino', trunk) +
+        row('Posición en el cable', Math.round((Number(tap.t) || 0) * 100) + '%') +
+      '</dl>' +
+      '<div class="color-row">' +
+        '<input type="color" data-field="color" value="' + color + '" />' +
+        '<span>Color del empalme</span>' +
+      '</div>' +
+      '<label class="field field--flush"><span>Longitud manual (mm)</span>' +
+        '<input type="number" min="0" step="10" data-field="length" value="' + (length || '') + '" placeholder="Ej: 180" />' +
+      '</label>' +
+      '<p class="hint length-hint">También puedes hacer doble clic sobre el empalme en el lienzo.</p>' +
+      '<div class="actions-row">' +
+        (wire ? '<button class="btn btn--sm" type="button" data-action="select-wire" data-wire-id="' + wire.id + '">Ver cable</button>' : '') +
+        '<button class="btn btn--sm btn--danger-ghost" type="button" data-action="delete-tap">Eliminar empalme</button>' +
+      '</div>';
+  }
+
   function renderPin(fullKey) {
     const found = H.store.findPin(fullKey);
     if (!found) return emptyMessage();
-    const wire = H.store.state.wires.find(function (w) {
-      return w.fromPinId === fullKey || w.toPinId === fullKey;
-    });
-    const other = wire
-      ? H.store.pinLabel(wire.fromPinId === fullKey ? wire.toPinId : wire.fromPinId)
-      : '';
+    const connection = H.store.connectionOfPin(fullKey);
+    const wire = connection && connection.kind === 'wire' ? connection.wire : null;
+    const tap = connection && connection.kind === 'tap' ? connection.tap : null;
+    let other = '';
+    if (wire) {
+      other = H.store.pinLabel(wire.fromPinId === fullKey ? wire.toPinId : wire.fromPinId);
+    } else if (tap) {
+      const trunk = connection.wire;
+      other = trunk
+        ? 'Empalme sobre ' + H.store.pinLabel(trunk.fromPinId) + ' → ' + H.store.pinLabel(trunk.toPinId)
+        : 'Empalme sobre un cable';
+    }
     const actions = wire
       ? '<div class="actions-row">' +
           '<button class="btn btn--sm" type="button" data-action="select-wire" data-wire-id="' + wire.id + '">Ver chicote</button>' +
           '<button class="btn btn--sm btn--danger-ghost" type="button" data-action="delete-wire" data-wire-id="' + wire.id + '">Eliminar chicote</button>' +
         '</div>'
-      : '<p class="hint" style="margin-top:8px">Pin libre: arrástralo hasta otro pin del lienzo para crear un chicote.</p>';
+      : tap
+        ? '<div class="actions-row">' +
+            '<button class="btn btn--sm" type="button" data-action="select-tap" data-tap-id="' + tap.id + '">Ver empalme</button>' +
+            '<button class="btn btn--sm btn--danger-ghost" type="button" data-action="delete-tap" data-tap-id="' + tap.id + '">Eliminar empalme</button>' +
+          '</div>'
+        : '<p class="hint" style="margin-top:8px">Pin libre: arrástralo hasta otro pin o suéltalo sobre un cable para crear un empalme.</p>';
 
     return selectionHead('⊙', found.compName + ' · pin ' + found.pin.label, found.pin.subgroupName || 'Pin') +
       '<dl class="prop-list">' +
         row('Componente', found.compName) +
         row('Subgrupo', found.pin.subgroupName || '—') +
         row('Valor del pin', found.pin.description || '—') +
-        row('Estado', wire ? 'Conectado' : 'Libre') +
+        row('Estado', wire || tap ? 'Conectado' : 'Libre') +
         (wire ? row('Conectado a', other) + row('Longitud manual', manualLength(wire.length)) : '') +
+        (tap ? row('Conectado a', other) + row('Longitud manual del empalme', manualLength(tap.length)) : '') +
+        (tap ? row('Posición en el cable', Math.round((Number(tap.t) || 0) * 100) + '%') : '') +
       '</dl>' +
       actions +
       '<div class="actions-row" style="margin-top:8px">' +
@@ -235,6 +285,11 @@
           H.App.toast('Chicote eliminado.', 'ok');
         } else if (action === 'select-wire') {
           if (btn.dataset.wireId) H.store.select('wire', btn.dataset.wireId);
+        } else if (action === 'select-tap') {
+          if (btn.dataset.tapId) H.store.select('tap', btn.dataset.tapId);
+        } else if (action === 'delete-tap') {
+          const tapId = btn.dataset.tapId || (selection.type === 'tap' ? selection.id : null);
+          if (tapId && H.store.removeTap(tapId)) H.App.toast('Empalme eliminado.', 'ok');
         } else if (action === 'select-component') {
           if (btn.dataset.compId) H.store.select('component', btn.dataset.compId);
         } else if (action === 'reset-wire') {
@@ -292,6 +347,8 @@
             H.Layout.drawWires();
             H.store.persist();
           }
+        } else if (selection.type === 'tap') {
+          H.store.updateTap(selection.id, { color: e.target.value }, 'geometry');
         }
       });
 
@@ -307,6 +364,9 @@
           } else if (selection.type === 'branch') {
             H.store.updateBranch(selection.id, { length: value });
             H.App.toast('Longitud manual de la ramificación actualizada.', 'ok', 1800);
+          } else if (selection.type === 'tap') {
+            H.store.updateTap(selection.id, { length: value });
+            H.App.toast('Longitud manual del empalme actualizada.', 'ok', 1800);
           }
           return;
         }
@@ -335,6 +395,9 @@
       } else if (selection.type === 'branch') {
         const branch = H.store.state.branches.find(function (b) { return b.id === selection.id; });
         body.innerHTML = branch ? renderBranch(branch) : emptyMessage();
+      } else if (selection.type === 'tap') {
+        const tap = H.store.findTap(selection.id);
+        body.innerHTML = tap ? renderTap(tap) : emptyMessage();
       } else if (selection.type === 'pin') {
         body.innerHTML = renderPin(selection.id);
       } else {
@@ -348,6 +411,7 @@
       let total = 0;
       state.wires.forEach(function (wire) { total += Math.max(0, Number(wire.length) || 0); });
       state.branches.forEach(function (branch) { total += Math.max(0, Number(branch.length) || 0); });
+      state.taps.forEach(function (tap) { total += Math.max(0, Number(tap.length) || 0); });
       const cost = state.components.reduce(function (sum, comp) {
         const def = H.store.findDef(comp.defId);
         return sum + (def ? Number(def.cost) || 0 : 0);
@@ -356,6 +420,7 @@
         components: String(state.components.length),
         wires: String(state.wires.length),
         branches: String(state.branches.length),
+        taps: String(state.taps.length),
         length: U.formatNumber(total, 0) + ' mm',
         cost: U.formatMoney(cost)
       };

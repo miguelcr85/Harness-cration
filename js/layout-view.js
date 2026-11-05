@@ -380,6 +380,7 @@
       const bundles = computeBundles();
       bundles.forEach(function (bundle) { H.Layout.drawBundle(bundle); });
       H.store.state.branches.forEach(function (branch) { H.Layout.drawBranch(branch); });
+      H.store.state.taps.forEach(function (tap) { H.Layout.drawTap(tap); });
       H.Layout.drawBundleHandles(bundleHandleGroups(bundles));
       wireLayer.batchDraw();
     },
@@ -599,6 +600,100 @@
         length > 0 ? U.formatNumber(length, 0) + ' mm' : '— mm',
         { fill: '#475569', fontSize: 9, opacity: length > 0 ? 0.95 : 0.7 }
       ));
+    },
+
+    drawTap(tap) {
+      const wire = H.store.state.wires.find(function (w) { return w.id === tap.wireId; });
+      if (!wire) return;
+      const a = H.store.splitKey(wire.fromPinId);
+      const b = H.store.splitKey(wire.toPinId);
+      const pin = H.store.findPin(tap.pinId);
+      if (!a || !b || !pin) return;
+      const targetComp = H.store.findComponent(pin.comp.id);
+      if (!targetComp) return;
+      const bundleRef = {
+        aCompId: a.compId,
+        bCompId: b.compId,
+        key: H.store.bundleKey(a.compId, b.compId)
+      };
+      const path = bundlePath(bundleRef);
+      if (!path) return;
+
+      const from = U.pointAt(path, tap.t);
+      const to = U.rectBorderPoint(layoutRect(targetComp), from);
+      const selection = H.store.state.selection;
+      const isSelected = selection.type === 'tap' && selection.id === tap.id;
+      const color = tap.color || wire.color || '#475569';
+      const length = Math.max(0, Number(tap.length) || 0);
+
+      if (isSelected) {
+        wireLayer.add(new Konva.Line({
+          points: [from.x, from.y, to.x, to.y],
+          stroke: '#bfdbfe', strokeWidth: 14, lineCap: 'round',
+          opacity: 0.8, listening: false
+        }));
+      }
+
+      const line = new Konva.Line({
+        points: [from.x, from.y, to.x, to.y],
+        stroke: color,
+        strokeWidth: isSelected ? 4 : 2.5,
+        lineCap: 'round',
+        hitStrokeWidth: 16,
+        name: 'tap',
+        shadowColor: '#0f172a',
+        shadowBlur: isSelected ? 10 : 0,
+        shadowOpacity: 0.25
+      });
+      line.setAttr('tapId', tap.id);
+      line.on('mouseenter', function () {
+        if (stage) stage.container().style.cursor = 'pointer';
+        line.strokeWidth((isSelected ? 4 : 2.5) + 1.8);
+        wireLayer.batchDraw();
+      });
+      line.on('mouseleave', function () {
+        if (stage) stage.container().style.cursor = '';
+        line.strokeWidth(isSelected ? 4 : 2.5);
+        wireLayer.batchDraw();
+      });
+      line.on('click tap', function (e) {
+        e.cancelBubble = true;
+        H.store.select('tap', tap.id);
+      });
+      line.on('dblclick dbltap', function (e) {
+        e.cancelBubble = true;
+        H.Layout.promptTapLength(tap);
+      });
+      wireLayer.add(line);
+
+      H.Hit.register(wireLayer, line, function (point) {
+        return H.Hit.distanceToSegment(point, from, to) <= H.Hit.threshold(9);
+      });
+
+      wireLayer.add(new Konva.Circle({
+        x: from.x, y: from.y, radius: 3.6, fill: color, listening: false
+      }));
+
+      wireLayer.add(labelAt(
+        U.lerp(from, to, 0.55).x,
+        U.lerp(from, to, 0.55).y,
+        length > 0 ? U.formatNumber(length, 0) + ' mm' : '— mm',
+        { fill: '#475569', fontSize: 9, opacity: length > 0 ? 0.95 : 0.7 }
+      ));
+    },
+
+    promptTapLength(tap) {
+      if (!tap) return;
+      const current = Math.max(0, Number(tap.length) || 0);
+      const answer = window.prompt(
+        'Longitud manual del empalme (mm):\n' +
+        'Es un valor representativo, no se calcula del lienzo.',
+        current ? String(current) : ''
+      );
+      if (answer === null) return;
+      const value = Math.max(0, Math.round(Number(String(answer).replace(',', '.')) || 0));
+      H.store.updateTap(tap.id, { length: value });
+      H.App.toast('Longitud manual del empalme actualizada.', 'ok');
     },
 
     promptBundleLength(bundle) {

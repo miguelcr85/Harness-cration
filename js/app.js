@@ -430,7 +430,7 @@
       if (canvasHint) {
         canvasHint.textContent = isLayout
           ? 'Vista layout · arrastra el punto medio del haz para moverlo o unir haces · doble clic para longitud manual'
-          : 'Vista esquema · clic en un pin para seleccionarlo; arrástralo para conectar';
+          : 'Vista esquema · arrastra pin→pin para crear un chicote o pin→cable para un empalme';
       }
 
       if (isBom) {
@@ -500,6 +500,13 @@
         const branch = H.store.state.branches.find(function (b) { return b.id === selection.id; });
         if (branch) {
           text = 'Selección: ramificación → ' + compName(branch.targetCompId);
+          empty = false;
+        }
+      } else if (selection.type === 'tap') {
+        const tap = H.store.findTap(selection.id);
+        if (tap) {
+          const pin = H.store.findPin(tap.pinId);
+          text = 'Selección: empalme ' + (pin ? pin.compName + ' · ' + pin.pin.label : 'pin') + ' → cable';
           empty = false;
         }
       }
@@ -667,6 +674,9 @@
       } else if (selection.type === 'branch') {
         H.store.removeBranch(selection.id);
         App.toast('Ramificación eliminada.', 'ok');
+      } else if (selection.type === 'tap') {
+        H.store.removeTap(selection.id);
+        App.toast('Empalme eliminado.', 'ok');
       } else if (selection.type === 'bundle') {
         const parts = String(selection.id).split('|');
         if (parts.length !== 2) return;
@@ -695,7 +705,7 @@
       }
       el.textContent = App.mode === 'layout'
         ? 'Layout: clic para seleccionar · arrastra el punto medio para moverlo · suéltalo sobre otro haz para unirlo · sobre un componente para ramificar · doble clic para longitud manual · Supr elimina'
-        : 'Fondo: paneo · rueda: zoom · clic en un pin para seleccionarlo · arrastra pin→pin para crear un chicote · Supr elimina';
+        : 'Fondo: paneo · rueda: zoom · clic en un pin para seleccionarlo · arrastra pin→pin para un chicote · arrastra pin→cable para un empalme · Supr elimina';
     },
 
     toast(message, type, duration) {

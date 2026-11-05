@@ -19,6 +19,7 @@
   const metricsMap = new Map();   // compId -> métricas del card
   const compNodes = new Map();    // compId -> Konva.Group
   const wireNodes = new Map();    // wireId -> Konva.Line
+  const tapNodes = new Map();     // tapId -> { line, marker, glow, tag }
   let connecting = null;          // { fromKey, from, line }
 
   function screenToWorld(pos) {
@@ -132,6 +133,47 @@
     return [start].concat(interior, [end]);
   }
 
+  /** Punto donde la línea pin→empalme sale de la tarjeta del componente. */
+  function exitPointFromRect(rect, from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    let best = null;
+    const test = function (t) {
+      if (!(t > 0) || t > 1) return;
+      const point = { x: from.x + dx * t, y: from.y + dy * t };
+      const insideX = point.x >= rect.x - 0.01 && point.x <= rect.x + rect.width + 0.01;
+      const insideY = point.y >= rect.y - 0.01 && point.y <= rect.y + rect.height + 0.01;
+      if (insideX && insideY && (!best || t < best.t)) best = { t: t, point: point };
+    };
+    if (dx !== 0) {
+      test((rect.x - from.x) / dx);
+      test((rect.x + rect.width - from.x) / dx);
+    }
+    if (dy !== 0) {
+      test((rect.y - from.y) / dy);
+      test((rect.y + rect.height - from.y) / dy);
+    }
+    return best ? best.point : null;
+  }
+
+  /** Punto del cable donde se une el pin y el recorrido del empalme. */
+  function tapPath(tap) {
+    const wire = H.store.state.wires.find(function (w) { return w.id === tap.wireId; });
+    const pinRef = H.store.splitKey(tap.pinId);
+    const comp = pinRef ? H.store.findComponent(pinRef.compId) : null;
+    const metrics = pinRef ? metricsMap.get(pinRef.compId) : null;
+    const pin = pinPos(tap.pinId);
+    const path = wire ? wirePath(wire) : null;
+    if (!path || !pin) return null;
+    const junction = U.pointAt(path, tap.t);
+    let start = pin;
+    if (comp && metrics) {
+      const rect = { x: comp.x, y: comp.y, width: metrics.width, height: metrics.height };
+      start = exitPointFromRect(rect, pin, junction) || pin;
+    }
+    return { wire: wire, pin: pin, start: start, junction: junction, points: [start, junction] };
+  }
+
   function flatPoints(points) {
     const flat = [];
     points.forEach(function (pt) { flat.push(pt.x, pt.y); });
@@ -146,6 +188,36 @@
     let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
     t = U.clamp(t, 0, 1);
     return U.dist(p, { x: a.x + t * dx, y: a.y + t * dy });
+  }
+
+  /** Objetivo bajo el puntero: un pin o un cable existente. */
+  function hitTargetAt(pointer) {
+    if (!pointer) return null;
+    let node = stage.getIntersection(pointer);
+    while (node) {
+      if (node.hasName && node.hasName('pin')) {
+        const pinKey = node.getAttr('pinKey');
+        if (pinKey) return { kind: 'pin', pinKey: pinKey };
+      }
+      if (node.hasName && node.hasName('wire')) {
+        const wireId = node.getAttr('wireId');
+        if (wireId) return { kind: 'wire', wireId: wireId };
+      }
+      node = node.getParent();
+    }
+    return null;
+  }
+
+  function wireTapCandidate(pointer) {
+    if (!pointer) return null;
+    const hit = hitTargetAt(pointer);
+    if (!hit || hit.kind !== 'wire') return null;
+    const wire = H.store.state.wires.find(function (w) { return w.id === hit.wireId; });
+    const path = wire ? wirePath(wire) : null;
+    const world = screenToWorld(pointer);
+    const near = path ? H.Hit.nearestPointOnPolyline(world, path) : null;
+    if (!wire || !near) return null;
+    return { wire: wire, near: near };
   }
 
   H.Schema = {
@@ -168,6 +240,7 @@
 
     screenToWorld: screenToWorld,
     pinPos: pinPos,
+    tapPath: tapPath,
 
     showPinTooltip(event, pin, def) {
       const tip = U.$('#pinTooltip');
@@ -203,9 +276,11 @@
       metricsMap.clear();
       compNodes.clear();
       wireNodes.clear();
+      tapNodes.clear();
 
       H.store.state.components.forEach(function (comp) { H.Schema.buildComponent(comp); });
       H.store.state.wires.forEach(function (wire) { H.Schema.drawWire(wire); });
+      H.store.state.taps.forEach(function (tap) { H.Schema.drawTap(tap); });
 
       const selection = H.store.state.selection;
       if (selection.type === 'wire') {
@@ -213,6 +288,11 @@
         if (selectedLine) selectedLine.moveToTop();
         const handles = wireLayer.findOne('.wire-handles');
         if (handles) handles.moveToTop();
+      } else if (selection.type === 'tap') {
+        const selectedTap = tapNodes.get(selection.id);
+        if (selectedTap && selectedTap.line) selectedTap.line.moveToTop();
+        if (selectedTap && selectedTap.marker) selectedTap.marker.moveToTop();
+        if (selectedTap && selectedTap.tag) selectedTap.tag.moveToTop();
       }
 
       compLayer.batchDraw();
@@ -595,6 +675,112 @@
       if (isSelected) H.Schema.drawHandles(wire, pts, line);
     },
 
+    drawTap(tap) {
+      const geo = tapPath(tap);
+      if (!geo) return;
+      const selection = H.store.state.selection;
+      const isSelected = selection.type === 'tap' && selection.id === tap.id;
+      const color = tap.color || (geo.wire && geo.wire.color) || '#475569';
+      const length = Math.max(0, Number(tap.length) || 0);
+      const flat = flatPoints(geo.points);
+
+      let glow = null;
+      if (isSelected) {
+        glow = new Konva.Line({
+          points: flat,
+          stroke: '#bfdbfe',
+          strokeWidth: 12,
+          lineCap: 'round',
+          lineJoin: 'round',
+          opacity: 0.85,
+          listening: false
+        });
+        wireLayer.add(glow);
+      }
+
+      const line = new Konva.Line({
+        points: flat,
+        stroke: color,
+        strokeWidth: isSelected ? 4 : 2.5,
+        lineCap: 'round',
+        lineJoin: 'round',
+        hitStrokeWidth: 18,
+        name: 'tap'
+      });
+      line.setAttr('tapId', tap.id);
+
+      line.on('mouseenter', function () {
+        if (stage) stage.container().style.cursor = 'pointer';
+        line.strokeWidth((isSelected ? 4 : 2.5) + 1.5);
+        wireLayer.batchDraw();
+      });
+      line.on('mouseleave', function () {
+        if (stage) stage.container().style.cursor = '';
+        line.strokeWidth(isSelected ? 4 : 2.5);
+        wireLayer.batchDraw();
+      });
+      line.on('click tap', function (e) {
+        e.cancelBubble = true;
+        H.store.select('tap', tap.id);
+      });
+      line.on('dblclick dbltap', function (e) {
+        e.cancelBubble = true;
+        H.Schema.promptTapLength(tap);
+      });
+      wireLayer.add(line);
+
+      H.Hit.register(wireLayer, line, function (point) {
+        const current = H.store.findTap(tap.id);
+        const path = current ? tapPath(current) : null;
+        return path ? H.Hit.distanceToPolyline(point, path.points) <= H.Hit.threshold(8) : false;
+      });
+
+      const marker = new Konva.Circle({
+        x: geo.junction.x,
+        y: geo.junction.y,
+        radius: 4.5,
+        fill: color,
+        stroke: '#ffffff',
+        strokeWidth: 1.6,
+        listening: false
+      });
+      wireLayer.add(marker);
+
+      let tag = null;
+      if (isSelected && length > 0) {
+        const mid = U.pointAt(geo.points, 0.5);
+        tag = new Konva.Label({ x: mid.x, y: mid.y - 10, listening: false });
+        tag.add(new Konva.Tag({
+          fill: '#1d4ed8', cornerRadius: 4,
+          pointerDirection: 'down', pointerWidth: 6, pointerHeight: 4
+        }));
+        const tagText = new Konva.Text({
+          text: U.formatNumber(length, 0) + ' mm',
+          fontSize: 9.5, padding: 4, fontFamily: FONT,
+          fontStyle: 'bold', fill: '#ffffff'
+        });
+        tag.add(tagText);
+        tag.offsetX(tagText.width() / 2 + 4);
+        wireLayer.add(tag);
+      }
+
+      tapNodes.set(tap.id, { line: line, marker: marker, glow: glow, tag: tag });
+    },
+
+    promptTapLength(tap) {
+      if (!tap) return;
+      const current = Math.max(0, Number(tap.length) || 0);
+      const answer = window.prompt(
+        'Longitud manual del empalme (mm):\n' +
+        'Es un valor representativo, no se calcula del lienzo.',
+        current ? String(current) : ''
+      );
+      if (answer === null) return;
+      const value = Math.max(0, Math.round(Number(String(answer).replace(',', '.')) || 0));
+      H.store.updateTap(tap.id, { length: value });
+      H.App.toast('Longitud manual del empalme actualizada.', 'ok');
+    },
+
     drawHandles(wire, pts, line) {
       const handles = new Konva.Group({ name: 'wire-handles' });
       pts.slice(1, -1).forEach(function (pt, index) {
@@ -662,6 +848,19 @@
         const pts = wirePath(wire);
         if (pts) line.points(flatPoints(pts));
       });
+      tapNodes.forEach(function (entry, tapId) {
+        const tap = H.store.findTap(tapId);
+        const geo = tap ? tapPath(tap) : null;
+        if (!geo) return;
+        const flat = flatPoints(geo.points);
+        entry.line.points(flat);
+        if (entry.glow) entry.glow.points(flat);
+        entry.marker.position(geo.junction);
+        if (entry.tag) {
+          const mid = U.pointAt(geo.points, 0.5);
+          entry.tag.position({ x: mid.x, y: mid.y - 10 });
+        }
+      });
       const selection = H.store.state.selection;
       if (selection.type === 'wire') {
         const wire = H.store.state.wires.find(function (w) { return w.id === selection.id; });
@@ -680,6 +879,13 @@
       wireNodes.forEach(function (line, wireId) {
         const wire = H.store.state.wires.find(function (w) { return w.id === wireId; });
         if (wire) line.stroke(wire.color || '#334155');
+      });
+      tapNodes.forEach(function (entry, tapId) {
+        const tap = H.store.findTap(tapId);
+        if (!tap) return;
+        const color = tap.color || '#475569';
+        entry.line.stroke(color);
+        entry.marker.fill(color);
       });
       wireLayer.batchDraw();
     },
@@ -719,7 +925,7 @@
         wasDraggable: wasDraggable
       };
       if (stage) stage.container().style.cursor = 'crosshair';
-      H.App.setHint('Arrastra hasta otro pin para crear el chicote · Esc para cancelar');
+      H.App.setHint('Arrastra hasta otro pin o suelta sobre un cable para empalmar · Esc para cancelar');
       overlay.batchDraw();
     },
 
@@ -738,14 +944,22 @@
       connecting.line.points([connecting.from.x, connecting.from.y, world.x, world.y]);
 
       if (connecting.hover) { connecting.hover.destroy(); connecting.hover = null; }
-      let target = stage.getIntersection(pointer);
-      while (target && !target.hasName('pin')) target = target.getParent();
-      const key = target ? target.getAttr('pinKey') : null;
+      const hit = hitTargetAt(pointer);
+      const key = hit && hit.kind === 'pin' ? hit.pinKey : null;
       if (key && key !== connecting.fromKey) {
         const pos = pinPos(key);
         if (pos) {
           connecting.hover = new Konva.Circle({
             x: pos.x, y: pos.y, radius: PIN_R + 5,
+            stroke: '#16a34a', strokeWidth: 2, dash: [3, 3], listening: false
+          });
+          overlay.add(connecting.hover);
+        }
+      } else if (hit && hit.kind === 'wire') {
+        const candidate = wireTapCandidate(pointer);
+        if (candidate) {
+          connecting.hover = new Konva.Circle({
+            x: candidate.near.x, y: candidate.near.y, radius: PIN_R + 3,
             stroke: '#16a34a', strokeWidth: 2, dash: [3, 3], listening: false
           });
           overlay.add(connecting.hover);
@@ -768,21 +982,37 @@
     finishConnect() {
       if (!connecting) return;
       const pointer = stage.getPointerPosition();
-      let target = pointer ? stage.getIntersection(pointer) : null;
-      while (target && !target.hasName('pin')) target = target.getParent();
-      const targetKey = target ? target.getAttr('pinKey') : null;
+      const hit = pointer ? hitTargetAt(pointer) : null;
+      const targetKey = hit && hit.kind === 'pin' ? hit.pinKey : null;
+      const tapCandidate = hit && hit.kind === 'wire' ? wireTapCandidate(pointer) : null;
       const fromKey = connecting.fromKey;
       const moved = connecting.moved;
       H.Schema.cancelConnect();
 
-      if (!targetKey || targetKey === fromKey) {
+      if (targetKey === fromKey) {
         if (!moved) H.store.select('pin', fromKey);
         return;
       }
 
-      const result = H.store.addWire(fromKey, targetKey);
-      if (result.error) H.App.toast(result.error, 'error', 4500);
-      else H.App.toast('Chicote creado. Puedes escribir su longitud manual en Propiedades.', 'ok', 3200);
+      if (targetKey) {
+        const result = H.store.addWire(fromKey, targetKey);
+        if (result.error) H.App.toast(result.error, 'error', 4500);
+        else H.App.toast('Chicote creado. Puedes escribir su longitud manual en Propiedades.', 'ok', 3200);
+        return;
+      }
+
+      if (tapCandidate) {
+        const result = H.store.addTap(fromKey, tapCandidate.wire.id, tapCandidate.near.t);
+        if (result.error) {
+          H.App.toast(result.error, 'error', 4500);
+        } else {
+          H.store.select('tap', result.tap.id);
+          H.App.toast('Empalme creado sobre el cable. Asígnale longitud manual en Propiedades.', 'ok', 3800);
+        }
+        return;
+      }
+
+      if (!moved) H.store.select('pin', fromKey);
     },
 
     isConnecting() {

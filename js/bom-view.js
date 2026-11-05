@@ -44,11 +44,12 @@
       const key = String(color || '#475569').toLowerCase();
       let row = cableMap.get(key);
       if (!row) {
-        row = { color: key, wires: 0, branches: 0, circuits: 0, mm: 0 };
+        row = { color: key, wires: 0, branches: 0, taps: 0, circuits: 0, mm: 0 };
         cableMap.set(key, row);
       }
       row.circuits += 1;
       if (kind === 'branch') row.branches += 1;
+      else if (kind === 'tap') row.taps += 1;
       else row.wires += 1;
       row.mm += Math.max(0, Number(lengthMm) || 0);
     }
@@ -58,6 +59,9 @@
     });
     state.branches.forEach(function (branch) {
       addCable(branch.color || '#475569', branch.length, 'branch');
+    });
+    state.taps.forEach(function (tap) {
+      addCable(tap.color || '#475569', tap.length, 'tap');
     });
 
     const cables = Array.from(cableMap.values()).sort(function (a, b) {
@@ -70,6 +74,7 @@
       pins: connectors.reduce(function (sum, row) { return sum + row.pinsTotal; }, 0),
       wires: state.wires.length,
       branches: state.branches.length,
+      taps: state.taps.length,
       cableMm: cables.reduce(function (sum, row) { return sum + row.mm; }, 0),
       cost: connectors.reduce(function (sum, row) { return sum + row.subtotal; }, 0)
     };
@@ -127,6 +132,7 @@
         '<td><span class="bom-swatch" style="background:' + U.escapeHtml(row.color) + '"></span>' + U.escapeHtml(row.color.toUpperCase()) + '</td>' +
         '<td class="num">' + row.wires + '</td>' +
         '<td class="num">' + row.branches + '</td>' +
+        '<td class="num">' + row.taps + '</td>' +
         '<td class="num">' + row.circuits + '</td>' +
         '<td class="num">' + U.formatNumber(meters(row.mm), 2) + ' m</td>' +
       '</tr>';
@@ -135,14 +141,15 @@
     return '<div class="bom-table-wrap"><table class="bom-table">' +
       '<thead><tr>' +
         '<th>Color de cable</th><th class="num">Chicotes</th><th class="num">Ramificaciones</th>' +
-        '<th class="num">Circuitos</th><th class="num">Longitud</th>' +
+        '<th class="num">Empalmes</th><th class="num">Circuitos</th><th class="num">Longitud</th>' +
       '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '<tfoot><tr>' +
         '<td>Total</td>' +
         '<td class="num">' + data.totals.wires + '</td>' +
         '<td class="num">' + data.totals.branches + '</td>' +
-        '<td class="num">' + (data.totals.wires + data.totals.branches) + '</td>' +
+        '<td class="num">' + data.totals.taps + '</td>' +
+        '<td class="num">' + (data.totals.wires + data.totals.branches + data.totals.taps) + '</td>' +
         '<td class="num">' + U.formatNumber(data.totals.cableM, 2) + ' m</td>' +
       '</tr></tfoot>' +
     '</table></div>';
@@ -166,6 +173,7 @@
         stat('Pines totales', String(totals.pins)) +
         stat('Chicotes', String(totals.wires)) +
         stat('Ramificaciones', String(totals.branches)) +
+        stat('Empalmes', String(totals.taps)) +
         stat('Cable total', U.formatNumber(totals.cableM, 2) + ' m', 'accent') +
         stat('Costo conectores', U.formatMoney(totals.cost), 'ok') +
       '</div>' +
@@ -177,7 +185,7 @@
         '<div class="bom-card__head"><h3>Cable por color</h3><span>' + U.formatNumber(totals.cableM, 2) + ' m en total</span></div>' +
         cablesTable(data) +
       '</section>' +
-      '<p class="bom-note">El total de cable suma chicotes y ramificaciones. Asigna o corrige longitudes en las propiedades de cada elemento del layout o esquema.</p>' +
+      '<p class="bom-note">El total de cable suma chicotes, ramificaciones y empalmes. Asigna o corrige longitudes en las propiedades de cada elemento del layout o esquema.</p>' +
     '</div>';
   }
 
@@ -200,16 +208,20 @@
     push(['Total', '', '', data.totals.instances, data.totals.pins, '', data.totals.cost.toFixed(2)]);
     push([]);
     push(['Cable por color']);
-    push(['Color', 'Chicotes', 'Ramificaciones', 'Circuitos', 'Longitud (m)']);
+    push(['Color', 'Chicotes', 'Ramificaciones', 'Empalmes', 'Circuitos', 'Longitud (m)']);
     data.cables.forEach(function (row) {
-      push([row.color, row.wires, row.branches, row.circuits, meters(row.mm).toFixed(3)]);
+      push([row.color, row.wires, row.branches, row.taps, row.circuits, meters(row.mm).toFixed(3)]);
     });
-    push(['Total', data.totals.wires, data.totals.branches, data.totals.wires + data.totals.branches, data.totals.cableM.toFixed(3)]);
+    push(['Total', data.totals.wires, data.totals.branches, data.totals.taps,
+      data.totals.wires + data.totals.branches + data.totals.taps, data.totals.cableM.toFixed(3)]);
     push([]);
     push(['Resumen']);
     push(['Conectores distintos', data.totals.distinct]);
     push(['Instancias colocadas', data.totals.instances]);
     push(['Pines totales', data.totals.pins]);
+    push(['Chicotes', data.totals.wires]);
+    push(['Ramificaciones', data.totals.branches]);
+    push(['Empalmes', data.totals.taps]);
     push(['Cable total (m)', data.totals.cableM.toFixed(3)]);
     push(['Costo conectores (USD)', data.totals.cost.toFixed(2)]);
 

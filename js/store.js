@@ -16,6 +16,7 @@
       components: [],
       wires: [],
       branches: [],
+      taps: [],
       routes: {},
       selection: { type: null, id: null }
     };
@@ -54,6 +55,7 @@
         components: state.components,
         wires: state.wires,
         branches: state.branches,
+        taps: state.taps,
         routes: state.routes
       };
     },
@@ -109,6 +111,9 @@
       state.branches = Array.isArray(data.branches) ? data.branches.filter(function (b) {
         return b && b.id && b.targetCompId && b.fromCompId && b.toCompId;
       }) : [];
+      state.taps = Array.isArray(data.taps) ? data.taps.filter(function (tap) {
+        return tap && tap.id && tap.pinId && tap.wireId;
+      }) : [];
       state.wires.forEach(function (wire) {
         wire.length = Math.max(0, Number(wire.length) || 0);
         if (!Array.isArray(wire.points)) wire.points = [];
@@ -116,6 +121,12 @@
       state.branches.forEach(function (branch) {
         branch.length = Math.max(0, Number(branch.length) || 0);
         branch.atMidpoint = !!branch.atMidpoint;
+      });
+      state.taps.forEach(function (tap) {
+        const rawT = Number(tap.t);
+        tap.t = H.Utils.clamp(Number.isFinite(rawT) ? rawT : 0.5, 0.02, 0.98);
+        tap.length = Math.max(0, Number(tap.length) || 0);
+        if (!tap.color) tap.color = '#475569';
       });
       state.routes = {};
       if (data.routes && typeof data.routes === 'object') {
@@ -183,7 +194,26 @@
     isPinConnected(fullKey) {
       return state.wires.some(function (w) {
         return w.fromPinId === fullKey || w.toPinId === fullKey;
+      }) || state.taps.some(function (tap) {
+        return tap.pinId === fullKey;
       });
+    },
+
+    /** Devuelve el chicote o empalme que ocupa un pin, si existe. */
+    connectionOfPin(fullKey) {
+      const wire = state.wires.find(function (w) {
+        return w.fromPinId === fullKey || w.toPinId === fullKey;
+      });
+      if (wire) return { kind: 'wire', wire: wire };
+      const tap = state.taps.find(function (item) { return item.pinId === fullKey; });
+      if (tap) {
+        return {
+          kind: 'tap',
+          tap: tap,
+          wire: state.wires.find(function (w) { return w.id === tap.wireId; }) || null
+        };
+      }
+      return null;
     },
 
     wiresOfComponent(compId) {
@@ -191,6 +221,25 @@
         const a = Store.splitKey(w.fromPinId);
         const b = Store.splitKey(w.toPinId);
         return (a && a.compId === compId) || (b && b.compId === compId);
+      });
+    },
+
+    findTap(tapId) {
+      return state.taps.find(function (tap) { return tap.id === tapId; }) || null;
+    },
+
+    tapsOfPin(fullKey) {
+      return state.taps.filter(function (tap) { return tap.pinId === fullKey; });
+    },
+
+    tapsOfWire(wireId) {
+      return state.taps.filter(function (tap) { return tap.wireId === wireId; });
+    },
+
+    tapsOfComponent(compId) {
+      return state.taps.filter(function (tap) {
+        const ref = Store.splitKey(tap.pinId);
+        return ref && ref.compId === compId;
       });
     },
 
@@ -305,6 +354,7 @@
       state.branches = state.branches.filter(function (branch) {
         return branch.fromCompId !== compId && branch.toCompId !== compId && branch.targetCompId !== compId;
       });
+      Store.pruneOrphanTaps();
       Store.pruneOrphanRoutes();
       if (state.selection.type === 'component' && state.selection.id === compId) {
         state.selection = { type: null, id: null };
@@ -316,7 +366,7 @@
     /* --------------------------- Chicotes --------------------------- */
     nextWireColor() {
       const palette = H.Utils.wirePalette;
-      return palette[state.wires.length % palette.length];
+      return palette[(state.wires.length + state.taps.length) % palette.length];
     },
 
     addWire(fromKey, toKey, color) {
@@ -326,10 +376,10 @@
       const b = Store.findPin(toKey);
       if (!a || !b) return { error: 'Los pines seleccionados ya no existen.' };
       if (Store.isPinConnected(fromKey)) {
-        return { error: 'El pin ' + a.pin.label + ' de ' + a.compName + ' ya tiene un chicote (conexión 1 a 1).' };
+        return { error: 'El pin ' + a.pin.label + ' de ' + a.compName + ' ya tiene una conexión (1 a 1).' };
       }
       if (Store.isPinConnected(toKey)) {
-        return { error: 'El pin ' + b.pin.label + ' de ' + b.compName + ' ya tiene un chicote (conexión 1 a 1).' };
+        return { error: 'El pin ' + b.pin.label + ' de ' + b.compName + ' ya tiene una conexión (1 a 1).' };
       }
       const wire = {
         id: H.Utils.uid('wire'),
@@ -359,6 +409,7 @@
     removeWire(wireId) {
       const wire = state.wires.find(function (w) { return w.id === wireId; });
       state.wires = state.wires.filter(function (item) { return item.id !== wireId; });
+      Store.pruneOrphanTaps();
       Store.pruneOrphanBranches();
       Store.pruneOrphanRoutes();
       if (state.selection.type === 'wire' && state.selection.id === wireId) {
@@ -366,6 +417,61 @@
       }
       Store.commit('all');
       return wire;
+    },
+
+    /* --------------------------- Empalmes pin → cable --------------------------- */
+    addTap(pinId, wireId, t, options) {
+      const opts = options || {};
+      const pin = Store.findPin(pinId);
+      if (!pin) return { error: 'El pin del empalme ya no existe.' };
+      const wire = state.wires.find(function (w) { return w.id === wireId; });
+      if (!wire) return { error: 'El cable de destino ya no existe.' };
+      if (Store.isPinConnected(pinId)) {
+        return { error: 'El pin ' + pin.pin.label + ' de ' + pin.compName + ' ya tiene una conexión.' };
+      }
+      if (!Store.findPin(wire.fromPinId) || !Store.findPin(wire.toPinId)) {
+        return { error: 'El cable de destino no es válido.' };
+      }
+      const rawT = Number(t);
+      const tap = {
+        id: H.Utils.uid('tap'),
+        pinId: pinId,
+        wireId: wireId,
+        t: H.Utils.clamp(Number.isFinite(rawT) ? rawT : 0.5, 0.02, 0.98),
+        color: opts.color || wire.color || '#475569',
+        length: Math.max(0, Number(opts.length) || 0),
+        createdAt: Date.now()
+      };
+      state.taps.push(tap);
+      Store.commit('all');
+      return { tap: tap };
+    },
+
+    updateTap(tapId, patch, reason) {
+      const tap = Store.findTap(tapId);
+      if (!tap) return null;
+      const next = patch || {};
+      Object.assign(tap, next);
+      if (Object.prototype.hasOwnProperty.call(next, 't')) {
+        const rawT = Number(tap.t);
+        tap.t = H.Utils.clamp(Number.isFinite(rawT) ? rawT : 0.5, 0.02, 0.98);
+      }
+      if (Object.prototype.hasOwnProperty.call(next, 'length')) {
+        tap.length = Math.max(0, Number(tap.length) || 0);
+      }
+      Store.commit(reason || 'all');
+      return tap;
+    },
+
+    removeTap(tapId) {
+      const tap = Store.findTap(tapId);
+      if (!tap) return null;
+      state.taps = state.taps.filter(function (item) { return item.id !== tapId; });
+      if (state.selection.type === 'tap' && state.selection.id === tapId) {
+        state.selection = { type: null, id: null };
+      }
+      Store.commit('all');
+      return tap;
     },
 
     /* --------------------------- Ramificaciones --------------------------- */
@@ -471,8 +577,20 @@
       state.wires = state.wires.filter(function (wire) {
         return Store.findPin(wire.fromPinId) && Store.findPin(wire.toPinId);
       });
+      Store.pruneOrphanTaps();
       Store.pruneOrphanBranches();
       Store.pruneOrphanRoutes();
+    },
+
+    /** Elimina empalmes cuyo pin o cable ya no existe. */
+    pruneOrphanTaps() {
+      state.taps = state.taps.filter(function (tap) {
+        if (!Store.findPin(tap.pinId)) return false;
+        return state.wires.some(function (wire) { return wire.id === tap.wireId; });
+      });
+      if (state.selection.type === 'tap' && !Store.findTap(state.selection.id)) {
+        state.selection = { type: null, id: null };
+      }
     },
 
     /** Elimina ramificaciones cuyo componente destino o cuyo haz ya no existe. */
@@ -616,6 +734,16 @@
         color: '#475569',
         length: 260,
         atMidpoint: true,
+        createdAt: Date.now()
+      }];
+
+      state.taps = [{
+        id: H.Utils.uid('tap'),
+        pinId: fusePin(2, 1),
+        wireId: state.wires[0].id,
+        t: 0.6,
+        color: '#ef4444',
+        length: 180,
         createdAt: Date.now()
       }];
 
