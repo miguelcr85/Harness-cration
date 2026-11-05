@@ -10,7 +10,7 @@
   function createInitialState() {
     return {
       meta: { name: 'Arnés sin título', createdAt: Date.now(), updatedAt: Date.now() },
-      settings: { mmPerPx: 1, showGrid: true },
+      settings: { showGrid: true },
       view: { mode: 'schema', scale: 1, x: 40, y: 40 },
       library: [],
       components: [],
@@ -96,7 +96,8 @@
       if (!Array.isArray(data.library) || !Array.isArray(data.components)) return false;
 
       state.meta = Object.assign(createInitialState().meta, data.meta || {});
-      state.settings = Object.assign({ mmPerPx: 1, showGrid: true }, data.settings || {});
+      state.settings = Object.assign({ showGrid: true }, data.settings || {});
+      delete state.settings.mmPerPx;
       state.view = Object.assign({ mode: 'schema', scale: 1, x: 40, y: 40 }, data.view || {});
       state.library = data.library.filter(function (def) { return def && def.id; });
       state.components = data.components.filter(function (comp) {

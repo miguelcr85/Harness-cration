@@ -77,7 +77,7 @@
       descriptions: sg.descriptions || {}
     });
     if (!pins.length) return '';
-    return '<div class="pin-details__caption">Texto de cada pin (opcional: GND, 5V, señal…)</div>' +
+    return '<div class="pin-details__caption">Valor de cada pin (opcional: GND, 5V, señal…)</div>' +
       '<div class="pin-details">' +
         pins.map(function (pin) {
           const description = (sg.descriptions && sg.descriptions[pin.id]) || '';

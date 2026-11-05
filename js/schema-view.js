@@ -17,6 +17,7 @@
   let overlay = null;
 
   const metricsMap = new Map();   // compId -> métricas del card
+  const compNodes = new Map();    // compId -> Konva.Group
   const wireNodes = new Map();    // wireId -> Konva.Line
   let connecting = null;          // { fromKey, from, line }
 
@@ -200,9 +201,8 @@
       H.Hit.clearLayer(compLayer);
       H.Hit.clearLayer(wireLayer);
       metricsMap.clear();
+      compNodes.clear();
       wireNodes.clear();
-      H.registry.cards.clear();
-      H.registry.pins.clear();
 
       H.store.state.components.forEach(function (comp) { H.Schema.buildComponent(comp); });
       H.store.state.wires.forEach(function (wire) { H.Schema.drawWire(wire); });
@@ -217,7 +217,6 @@
 
       compLayer.batchDraw();
       wireLayer.batchDraw();
-      H.Measure.redraw();
     },
 
     buildComponent(comp) {
@@ -329,20 +328,12 @@
         comp.x = Math.round(group.x());
         comp.y = Math.round(group.y());
         H.Schema.refreshWires();
-        H.Measure.redraw();
       });
       group.on('dragend', function () {
         H.store.moveComponent(comp.id, group.x(), group.y(), 'schema');
         H.store.commit('geometry');
       });
       group.on('click tap', function (e) {
-        if (H.Measure.isActive()) {
-          H.Measure.pick({
-            kind: 'card', id: comp.id, label: def.name,
-            fallback: { x: comp.x + m.width / 2, y: comp.y + m.height / 2 }
-          });
-          return;
-        }
         if (e.target.hasName('pin')) return;
         H.store.select('component', comp.id);
       });
@@ -352,7 +343,7 @@
       });
 
       compLayer.add(group);
-      if (H.App.mode !== 'layout') H.registry.cards.set(comp.id, group);
+      compNodes.set(comp.id, group);
     },
 
     buildPhoto(def, m, group) {
@@ -499,7 +490,7 @@
               ring.stroke('#93c5fd');
             }
             label.fill('#1d4ed8');
-            if (stage) stage.container().style.cursor = H.Measure.isActive() ? 'crosshair' : 'pointer';
+            if (stage) stage.container().style.cursor = 'pointer';
             H.Schema.showPinTooltip(e, pin, def, connected);
             pinGroup.getLayer().batchDraw();
           });
@@ -514,24 +505,12 @@
           });
           hit.on('mousedown touchstart', function (e) {
             e.cancelBubble = true;
-            if (H.Measure.isActive()) return;
             H.Schema.startConnect(fullKey);
           });
           hit.on('click tap', function (e) {
             e.cancelBubble = true;
-            if (H.Measure.isActive()) {
-              const found = H.store.findPin(fullKey);
-              H.Measure.pick({
-                kind: 'pin', id: fullKey,
-                label: (def.name || '') + ' · pin ' + (found ? found.pin.label : pin.label),
-                fallback: { x: comp.x + pin.x, y: comp.y + pin.y }
-              });
-              return;
-            }
             H.store.select('pin', fullKey);
           });
-
-          H.registry.pins.set(fullKey, pinGroup);
         });
       });
     },
@@ -579,12 +558,10 @@
       });
       line.on('click tap', function (e) {
         e.cancelBubble = true;
-        if (H.Measure.isActive()) return;
         H.store.select('wire', wire.id);
       });
       line.on('dblclick dbltap', function (e) {
         e.cancelBubble = true;
-        if (H.Measure.isActive()) return;
         const pointer = stage.getPointerPosition();
         if (pointer) H.Schema.addBend(wire, screenToWorld(pointer));
       });
@@ -711,7 +688,7 @@
       if (connecting) return;
 
       const ref = H.store.splitKey(fullKey);
-      const cardNode = ref ? H.registry.cards.get(ref.compId) : null;
+      const cardNode = ref ? compNodes.get(ref.compId) : null;
       const wasDraggable = cardNode ? cardNode.draggable() : true;
       if (cardNode) cardNode.draggable(false);
 

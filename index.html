@@ -34,6 +34,7 @@
         <div class="segmented" role="group" aria-label="Vista del lienzo">
           <button class="segmented__btn is-active" id="btnViewSchema" type="button" data-mode="schema">Vista Esquema</button>
           <button class="segmented__btn" id="btnViewLayout" type="button" data-mode="layout">Vista Layout</button>
+          <button class="segmented__btn" id="btnViewBom" type="button" data-mode="bom">Vista BOM</button>
         </div>
 
         <button class="btn" id="btnAutoArrange" type="button" title="Reorganiza los componentes en la vista layout">
@@ -93,13 +94,9 @@
         <span id="canvasHintText">Vista esquema · arrastra un componente desde la biblioteca</span>
       </div>
 
-      <div class="measure-badge" id="measureBadge" hidden>
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 17 17 3l4 4L7 21z"/><path d="M8 16l1.5 1.5M11 13l1.5 1.5M14 10l1.5 1.5M17 7l1.5 1.5"/></svg>
-        Modo medición: haz clic en 2 elementos
-        <button type="button" id="btnMeasureStop">Salir</button>
-      </div>
-
       <div class="pin-tooltip" id="pinTooltip" hidden></div>
+
+      <div class="bom-view" id="bomView" hidden></div>
 
       <div class="empty-state" id="emptyState">
         <div class="empty-state__icon">
@@ -120,28 +117,6 @@
         <h2 class="panel-title">Propiedades</h2>
         <div id="selectionBody" class="panel-body">
           <p class="muted">Selecciona un componente, un chicote o un haz para ver sus propiedades.</p>
-        </div>
-      </div>
-
-      <div class="inspector__block">
-        <h2 class="panel-title">Medición de distancia (opcional)</h2>
-        <div class="panel-body">
-          <label class="field field--stack">
-            <span>Distancia entre elementos</span>
-            <input type="text" id="distanceValue" class="input input--readonly" readonly value="—" placeholder="Sin medición" />
-          </label>
-          <div class="measure-row">
-            <button class="btn btn--block" id="btnMeasure" type="button">Medir (2 clics)</button>
-            <button class="btn btn--ghost" id="btnMeasureClear" type="button" title="Limpiar medición">Limpiar</button>
-          </div>
-          <label class="field field--inline">
-            <span>Escala</span>
-            <span class="field__affix">1 px =</span>
-            <input type="number" id="scaleInput" min="0.01" step="0.01" value="1" />
-            <span class="field__affix">mm</span>
-          </label>
-          <p class="hint" id="measureHint">Haz clic en dos pines o en dos tarjetas para medir.</p>
-          <p class="hint" style="margin-top:6px">Herramienta opcional: no modifica las longitudes manuales del arnés.</p>
         </div>
       </div>
 
@@ -244,9 +219,9 @@
   <script src="js/store.js"></script>
   <script src="js/component-modal.js"></script>
   <script src="js/library.js"></script>
-  <script src="js/measure.js"></script>
   <script src="js/schema-view.js"></script>
   <script src="js/layout-view.js"></script>
+  <script src="js/bom-view.js"></script>
   <script src="js/inspector.js"></script>
   <script src="js/app.js"></script>
 </body>

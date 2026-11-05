@@ -19,10 +19,10 @@ python -m http.server 8080
 ## Funcionalidades
 
 ### 1. Interfaz
-- Barra superior con **Agregar Componente**, cambio de vista **Esquema / Layout**, **Auto-organizar**, zoom, guardar, importar/exportar JSON, exportar PNG y proyecto nuevo.
+- Barra superior con **Agregar Componente**, cambio de vista **Esquema / Layout / BOM**, **Auto-organizar**, zoom, guardar, importar/exportar JSON, exportar PNG y proyecto nuevo.
 - Panel izquierdo con la **biblioteca** de conectores (miniatura de la foto, nombre, compañía, pines y costo). Se puede buscar, arrastrar al lienzo o insertar con doble clic. Cada tarjeta permite editar o eliminar la definición.
 - Lienzo con **zoom** (rueda del ratón), **paneo** (arrastrar el fondo) y **cuadrícula adaptativa**.
-- Panel derecho con **propiedades**, **medición de distancia opcional**, escala mm/px y **resumen del arnés** (componentes, chicotes, ramificaciones, longitud manual total y costo de conectores).
+- Panel derecho con **propiedades** y **resumen del arnés** (componentes, chicotes, ramificaciones, longitud manual total y costo de conectores).
 
 ### 2. Creación de componentes (modal)
 - Nombre, compañía, costo y **foto** (FileReader → DataURL, redimensionada a 560 px para ahorrar espacio).
@@ -42,7 +42,7 @@ python -m http.server 8080
 - **Selección**: cada componente, pin, chicote y haz/ramificación seleccionado se resalta con un contorno azul; la barra de estado indica qué elemento está seleccionado. Un clic sobre el fondo o `Esc` limpia la selección.
 - **Crear chicote**: hacer clic sobre un pin y arrastrar hasta otro pin. Cada pin posee un área de impacto amplia (incluye su número y su texto) para que no se mueva el componente al pulsarlo. Se muestra una línea temporal y un resaltado del pin destino. Validación estricta **1 a 1** (un pin no acepta más de un chicote).
 - **Ruteo editable**: doble clic sobre un cable agrega un punto de control; al seleccionar un cable aparecen manejadores arrastrables para crear curvas y dobleces. El botón *Restablecer ruteo* vuelve al ruteo automático ortogonal.
-- Propiedades del chicote: origen, destino, color, **longitud manual en mm** y eliminación.
+- Propiedades del chicote: **componente origen, pin origen y su valor asignado** por separado, **componente destino, pin destino y su valor**, puntos de ruteo, color, **longitud manual en mm** y eliminación.
 
 ### 4. Vista Layout
 - Los mismos componentes se muestran como tarjetas simplificadas (foto, nombre, compañía y nº de pines) en posiciones de layout independientes de la vista esquema.
@@ -54,9 +54,13 @@ python -m http.server 8080
 - *Auto-organizar* distribuye los componentes en columnas según la conectividad (BFS).
 - Al seleccionar un haz se listan todos sus cables con colores y longitudes manuales, el punto de unión y cuántos haces están unidos.
 
-### 5. Medición de distancia (opcional)
-- Botón **Medir (2 clics)**: selecciona dos pines (vista esquema) o dos tarjetas (cualquier vista) y escribe el resultado en el campo de texto **Distancia entre elementos** con formato `N px · N mm`.
-- La escala (`1 px = X mm`) solo afecta a esta herramienta de medición puntual; **no** se usa para las longitudes del layout ni para el resumen del arnés.
+### 5. Vista BOM
+- Pestaña **Vista BOM** con la **lista de materiales** del arnés, sin perder el proyecto ni las vistas de dibujo.
+- **Conectores**: agrupa las instancias por referencia e indica compañía, pines por conector, cantidad, pines totales, costo unitario y subtotal.
+- **Cable por color**: agrupa chicotes y ramificaciones por color, con cantidad de circuitos y la **longitud total en metros** a partir de las longitudes manuales.
+- Indicadores generales: conectores distintos, instancias, pines totales, chicotes, ramificaciones, cable total y costo de conectores.
+- Botón **Exportar CSV** con las tablas y el resumen para llevar el BOM a una hoja de cálculo.
+- El BOM se actualiza automáticamente al agregar, quitar o editar componentes, cables y longitudes.
 
 ### 6. Persistencia y exportación
 - Guardado automático (debounce) en `localStorage`.
@@ -69,7 +73,7 @@ python -m http.server 8080
 | --- | --- |
 | `Supr` / `Backspace` | Elimina la selección (componente, chicote, haz o ramificación) |
 | `Ctrl/Cmd + S` | Guarda inmediatamente |
-| `Esc` | Cancela la creación de un chicote, una ramificación o la medición; si no hay acción en curso, limpia la selección |
+| `Esc` | Cancela la creación de un chicote o una ramificación; si no hay acción en curso, limpia la selección |
 | Doble clic en haz/ramificación | Edita su longitud manual en mm (vista layout) |
 | Arrastrar punto medio (layout) | Mueve el punto del haz; suéltalo sobre otro haz para unirlos o sobre un componente para ramificar |
 | Rueda del ratón | Zoom sobre el cursor |
@@ -87,7 +91,7 @@ js/component-modal.js      Alta/edición de conectores y matriz de pines
 js/library.js              Biblioteca lateral y drag & drop
 js/schema-view.js          Vista esquema en Konva (componentes, pines, chicotes)
 js/layout-view.js          Vista layout (haces, longitudes y ramificaciones)
-js/measure.js              Herramienta de medición y overlay
+js/bom-view.js             Vista BOM: cantidades, costos, metros de cable y CSV
 js/inspector.js            Propiedades, resumen y acciones
 js/app.js                  Stage, capas, toolbar, zoom/paneo, atajos
 js/vendor/konva.min.js     Konva.js 9.3.16 (local)
@@ -100,7 +104,7 @@ js/vendor/konva.min.js     Konva.js 9.3.16 (local)
   "app": "Harness Studio",
   "version": 1,
   "meta": { "name": "Arnés sin título", "createdAt": 0, "updatedAt": 0 },
-  "settings": { "mmPerPx": 1, "showGrid": true },
+  "settings": { "showGrid": true },
   "view": { "mode": "schema", "scale": 1, "x": 40, "y": 40 },
   "library": [
     {
@@ -159,7 +163,7 @@ js/vendor/konva.min.js     Konva.js 9.3.16 (local)
 
 ## Notas y limitaciones
 - La conexión es **1 a 1** por pin; las derivaciones se modelan como ramificaciones desde un haz en la vista layout.
-- Las longitudes del layout son **manuales/representativas**; la herramienta de medición (px/mm) es independiente y opcional.
+- Las longitudes del layout son **manuales/representativas**; no se calculan distancias desde el lienzo. La vista BOM usa esos valores para informar los metros de cable.
 - La selección y el arrastre no dependen del canvas de hit de Konva (`getImageData`): se resuelven por geometría en `js/hit-test.js`, por lo que funcionan igual en Chrome, Edge y **Brave** aunque esté activa la protección de huella digital.
 - Las fotos se guardan como DataURL dentro del JSON/localStorage; imágenes muy grandes pueden agotar la cuota del navegador (se avisa y se puede usar Exportar JSON).
 - Las definiciones se comparten entre instancias: editar un conector cambia todas sus copias en el lienzo.

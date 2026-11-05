@@ -8,8 +8,6 @@
   const MIN_SCALE = 0.2;
   const MAX_SCALE = 2.5;
 
-  H.registry = { cards: new Map(), pins: new Map() };
-
   const App = {
     stage: null,
     layers: {},
@@ -27,8 +25,8 @@
 
       H.ComponentModal.init();
       H.Library.init();
-      H.Measure.init();
       H.Inspector.init();
+      H.Bom.init();
       H.Schema.mount({
         stage: App.stage,
         schemaLayer: App.layers.schema,
@@ -43,7 +41,7 @@
       });
 
       App.applyViewFromState();
-      App.setMode(H.store.state.view.mode === 'layout' ? 'layout' : 'schema', true);
+      App.setMode(['schema', 'layout', 'bom'].indexOf(H.store.state.view.mode) >= 0 ? H.store.state.view.mode : 'schema', true);
       App.refreshAll();
       App.updateZoomLabel();
 
@@ -159,7 +157,6 @@
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) App.panning.moved = true;
         stage.position({ x: App.panning.origin.x + dx, y: App.panning.origin.y + dy });
         App.layers.grid.batchDraw();
-        if (H.Measure) H.Measure.redraw();
       });
 
       stage.on('mouseup touchend', function () {
@@ -200,7 +197,6 @@
         App.layers.grid.batchDraw();
         App.updateZoomLabel();
         App.persistView();
-        if (H.Measure) H.Measure.redraw();
       });
     },
 
@@ -225,6 +221,8 @@
       if (schemaBtn) schemaBtn.addEventListener('click', function () { App.setMode('schema'); });
       const layoutBtn = U.$('#btnViewLayout');
       if (layoutBtn) layoutBtn.addEventListener('click', function () { App.setMode('layout'); });
+      const bomBtn = U.$('#btnViewBom');
+      if (bomBtn) bomBtn.addEventListener('click', function () { App.setMode('bom'); });
 
       const arrangeBtn = U.$('#btnAutoArrange');
       if (arrangeBtn) {
@@ -272,7 +270,6 @@
             if (result.error) {
               App.toast(result.error, 'error', 5000);
             } else {
-              H.Measure.clear();
               App.centerView();
               App.toast('Proyecto importado correctamente.', 'ok');
             }
@@ -293,7 +290,6 @@
           if (!H.store.state.components.length && !H.store.state.library.length) return;
           if (!window.confirm('¿Crear un proyecto nuevo? Se perderá el arnés actual.')) return;
           H.store.clear();
-          H.Measure.clear();
           App.toast('Proyecto nuevo.', 'ok');
         });
       }
@@ -340,7 +336,6 @@
         if (typing) return;
         if (e.key === 'Escape') {
           if (H.Schema.isConnecting && H.Schema.isConnecting()) return;
-          if (H.Measure && H.Measure.isActive()) return;
           H.store.clearSelection();
           return;
         }
@@ -395,40 +390,61 @@
     resize() {
       if (!App.stage) return;
       const host = U.$('#stageHost');
-      if (!host) return;
-      App.stage.width(host.clientWidth);
-      App.stage.height(host.clientHeight);
+      if (!host || host.hidden) return;
+      const width = host.clientWidth;
+      const height = host.clientHeight;
+      if (!width || !height) return;
+      App.stage.width(width);
+      App.stage.height(height);
       App.layers.grid.batchDraw();
-      if (H.Measure) H.Measure.redraw();
     },
 
     setMode(mode, silent) {
-      const next = mode === 'layout' ? 'layout' : 'schema';
+      const allowed = { schema: true, layout: true, bom: true };
+      const next = allowed[mode] ? mode : 'schema';
+      const isLayout = next === 'layout';
+      const isBom = next === 'bom';
+
       App.mode = next;
       H.store.state.view.mode = next;
-      const isLayout = next === 'layout';
+      document.body.classList.toggle('mode-bom', isBom);
 
-      App.layers.schema.visible(!isLayout);
-      App.layers.schemaWire.visible(!isLayout);
+      App.layers.schema.visible(next === 'schema');
+      App.layers.schemaWire.visible(next === 'schema');
       App.layers.layout.visible(isLayout);
       App.layers.layoutWire.visible(isLayout);
+
+      const stageHost = U.$('#stageHost');
+      if (stageHost) stageHost.hidden = isBom;
+      const bomView = U.$('#bomView');
+      if (bomView) bomView.hidden = !isBom;
 
       U.$$('[data-mode]').forEach(function (btn) {
         btn.classList.toggle('is-active', btn.dataset.mode === next);
       });
       const modeLabel = U.$('#statusMode');
-      if (modeLabel) modeLabel.textContent = isLayout ? 'Vista layout' : 'Vista esquema';
+      if (modeLabel) {
+        modeLabel.textContent = isBom ? 'Vista BOM' : (isLayout ? 'Vista layout' : 'Vista esquema');
+      }
       const canvasHint = U.$('#canvasHintText');
       if (canvasHint) {
         canvasHint.textContent = isLayout
           ? 'Vista layout · arrastra el punto medio del haz para moverlo o unir haces · doble clic para longitud manual'
           : 'Vista esquema · clic en un pin para seleccionarlo; arrástralo para conectar';
       }
+
+      if (isBom) {
+        H.store.state.selection = { type: null, id: null };
+      } else {
+        App.resize();
+        App.stage.batchDraw();
+      }
+
       App.setHint('');
-      App.stage.batchDraw();
       App.updateZoomLabel();
       H.store.persist();
       if (!silent) App.refreshAll();
+      else H.Bom.render();
     },
 
     refreshAll() {
@@ -437,15 +453,20 @@
       H.Layout.render();
       H.Library.render();
       H.Inspector.render();
+      H.Bom.render();
       App.updateEmptyState();
       App.updateSelectionStatus();
-      App.syncScaleInput();
       App.persistView();
     },
 
     updateSelectionStatus() {
       const el = U.$('#statusSelection');
       if (!el) return;
+      if (App.mode === 'bom') {
+        el.textContent = 'BOM · cantidades y metros de cable';
+        el.classList.remove('is-empty');
+        return;
+      }
       const selection = H.store.state.selection;
       const compName = function (id) {
         const data = H.store.compData(id);
@@ -491,21 +512,13 @@
       const showGrid = H.store.state.settings.showGrid !== false;
       App.layers.grid.visible(showGrid);
       App.layers.grid.batchDraw();
-      App.syncScaleInput();
       App.refreshAll();
     },
 
     updateEmptyState() {
       const empty = U.$('#emptyState');
       if (!empty) return;
-      empty.hidden = H.store.state.components.length > 0;
-    },
-
-    syncScaleInput() {
-      const input = U.$('#scaleInput');
-      if (!input) return;
-      const value = Number(H.store.state.settings.mmPerPx) || 1;
-      input.value = String(value);
+      empty.hidden = App.mode === 'bom' || H.store.state.components.length > 0;
     },
 
     updateZoomLabel() {
@@ -529,7 +542,6 @@
         App.layers.grid.batchDraw();
         App.updateZoomLabel();
         App.persistView();
-        H.Measure.redraw();
         return;
       }
 
@@ -566,7 +578,6 @@
       App.layers.grid.batchDraw();
       App.updateZoomLabel();
       App.persistView();
-      H.Measure.redraw();
     },
 
     zoomBy(factor) {
@@ -593,7 +604,6 @@
       App.layers.grid.batchDraw();
       App.updateZoomLabel();
       App.persistView();
-      H.Measure.redraw();
     },
 
     saveNow() {
@@ -615,6 +625,10 @@
     },
 
     exportPng() {
+      if (App.mode === 'bom') {
+        App.toast('Cambia a Vista Esquema o Layout para exportar el PNG.', 'warn');
+        return;
+      }
       try {
         const url = App.stage.toDataURL({ pixelRatio: 2 });
         const a = document.createElement('a');
@@ -673,6 +687,10 @@
       if (!el) return;
       if (text) {
         el.textContent = text;
+        return;
+      }
+      if (App.mode === 'bom') {
+        el.textContent = 'Las longitudes provienen de los valores manuales · Exporta el CSV desde la vista';
         return;
       }
       el.textContent = App.mode === 'layout'

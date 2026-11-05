@@ -298,7 +298,6 @@
       wireLayer.destroyChildren();
       H.Hit.clearLayer(cardLayer);
       H.Hit.clearLayer(wireLayer);
-      H.registry.cards.clear();
       midDrag = null;
 
       H.Layout.drawWires();
@@ -306,7 +305,6 @@
 
       cardLayer.batchDraw();
       wireLayer.batchDraw();
-      H.Measure.redraw();
     },
 
     scheduleWires() {
@@ -438,12 +436,10 @@
       });
       line.on('click tap', function (e) {
         e.cancelBubble = true;
-        if (H.Measure.isActive()) return;
         H.store.select('bundle', bundle.key);
       });
       line.on('dblclick dbltap', function (e) {
         e.cancelBubble = true;
-        if (H.Measure.isActive()) return;
         H.Layout.promptBundleLength(bundle);
       });
       wireLayer.add(line);
@@ -498,7 +494,6 @@
 
         handle.on('click tap', function (e) {
           e.cancelBubble = true;
-          if (H.Measure.isActive()) return;
           H.store.select('bundle', keys[0]);
         });
         handle.on('mouseenter', function () {
@@ -582,12 +577,10 @@
       });
       line.on('click tap', function (e) {
         e.cancelBubble = true;
-        if (H.Measure.isActive()) return;
         H.store.select('branch', branch.id);
       });
       line.on('dblclick dbltap', function (e) {
         e.cancelBubble = true;
-        if (H.Measure.isActive()) return;
         H.Layout.promptBranchLength(branch);
       });
       wireLayer.add(line);
@@ -750,20 +743,12 @@
         comp.layoutX = Math.round(group.x());
         comp.layoutY = Math.round(group.y());
         H.Layout.scheduleWires();
-        H.Measure.redraw();
       });
       group.on('dragend', function () {
         H.store.moveComponent(comp.id, group.x(), group.y(), 'layout');
         H.store.commit('geometry');
       });
       group.on('click tap', function () {
-        if (H.Measure.isActive()) {
-          H.Measure.pick({
-            kind: 'card', id: comp.id, label: def.name,
-            fallback: { x: comp.layoutX + CARD_W / 2, y: comp.layoutY + CARD_H / 2 }
-          });
-          return;
-        }
         H.store.select('component', comp.id);
       });
       group.on('dblclick dbltap', function (e) {
@@ -775,7 +760,6 @@
       H.Hit.register(cardLayer, card, function (point) {
         return H.Hit.pointInRect(point, comp.layoutX, comp.layoutY, CARD_W, CARD_H);
       });
-      if (H.App.mode === 'layout') H.registry.cards.set(comp.id, group);
     }
   };
 })(window.Harness);

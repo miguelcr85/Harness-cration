@@ -1,5 +1,5 @@
 /* ============================================================
-   inspector.js · Panel de propiedades, medición y resumen
+   inspector.js · Panel de propiedades y resumen
    ============================================================ */
 (function (H) {
   'use strict';
@@ -72,14 +72,28 @@
       '</div>';
   }
 
+  function pinParts(fullKey) {
+    const found = H.store.findPin(fullKey);
+    if (!found) return { comp: '—', pin: '—', value: '' };
+    return {
+      comp: found.compName,
+      pin: found.pin.label,
+      value: String(found.pin.description || '').trim()
+    };
+  }
+
   function renderWire(wire) {
-    const from = H.store.pinLabel(wire.fromPinId);
-    const to = H.store.pinLabel(wire.toPinId);
+    const from = pinParts(wire.fromPinId);
+    const to = pinParts(wire.toPinId);
     const length = Math.max(0, Number(wire.length) || 0);
-    return selectionHead('〜', from + ' → ' + to, 'Chicote individual') +
+    return selectionHead('〜', from.comp + ' · ' + from.pin + ' → ' + to.comp + ' · ' + to.pin, 'Chicote individual') +
       '<dl class="prop-list">' +
-        row('Origen', from) +
-        row('Destino', to) +
+        row('Componente origen', from.comp) +
+        row('Pin origen', from.pin) +
+        (from.value ? row('Valor pin origen', from.value) : '') +
+        row('Componente destino', to.comp) +
+        row('Pin destino', to.pin) +
+        (to.value ? row('Valor pin destino', to.value) : '') +
         row('Puntos de ruteo', String((wire.points || []).length)) +
       '</dl>' +
       '<div class="color-row">' +
@@ -185,7 +199,7 @@
       '<dl class="prop-list">' +
         row('Componente', found.compName) +
         row('Subgrupo', found.pin.subgroupName || '—') +
-        row('Descripción', found.pin.description || '—') +
+        row('Valor del pin', found.pin.description || '—') +
         row('Estado', wire ? 'Conectado' : 'Libre') +
         (wire ? row('Conectado a', other) + row('Longitud manual', manualLength(wire.length)) : '') +
       '</dl>' +
@@ -353,7 +367,6 @@
 
     refreshLive() {
       H.Inspector.renderSummary();
-      H.Measure.redraw();
     }
   };
 })(window.Harness);
